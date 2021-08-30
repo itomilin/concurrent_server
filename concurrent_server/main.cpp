@@ -87,11 +87,10 @@ void commandsCycle( AcceptData& acceptData )
             squirt = AS_SQUIRT;
             break;
         case TalkersCommand::STOP:
-            acceptData.cmd = TalkersCommand::GETCOMMAND;
-            squirt = AS_SQUIRT;
-            break;
-        case TalkersCommand::EXIT:
-            break;
+            continue;
+            //break;
+        //case TalkersCommand::EXIT:
+        //    break;
         case TalkersCommand::STATISTICS:
             break;
         case TalkersCommand::WAIT:
@@ -232,6 +231,46 @@ DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
     ExitThread( *(DWORD*)cmd );
 }
 
+DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
+{
+    std::cout << "BEFORE: " << ( (AcceptData*)cmd )->cmd << std::endl;
+    HANDLE hPipe; // дескриптор канала
+    try
+    {
+        if ( ( hPipe = CreateNamedPipe(L"\\\\.\\pipe\\ConsolePipe",
+            PIPE_ACCESS_DUPLEX, //дуплексный канал
+            PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный
+            1, NULL, NULL, // максимум 1 экземпляр
+            INFINITE, NULL ) ) == INVALID_HANDLE_VALUE )
+            throw errorHandler( "create:", GetLastError() );
+        if ( !ConnectNamedPipe( hPipe, NULL ) ) // ожидать клиента
+            throw errorHandler( "connect:", GetLastError() );
+        
+
+    }
+    catch ( std::string ErrorPipeText )
+    {
+        std::cout << std::endl << ErrorPipeText;
+    }
+
+    //while ( true )
+    {
+        char buf[256]{ "\0" };
+        LPDWORD countReadedBytes{};
+        ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+        //std::cout << "READED: " << buf << std::endl;
+
+        //std::cout << "ConsolePipeCmd: "
+        //    << ((AcceptData*)cmd)->cmd << std::endl;
+        ( (AcceptData*)cmd )->cmd = (TalkersCommand)std::stoi(buf);
+        //Sleep( 3000 );
+        std::cout << "AFTER: " << ( (AcceptData*)cmd )->cmd << std::endl;
+        //Sleep( 15000 );
+    }
+
+    ExitThread( *(DWORD*)cmd );
+}
+
 int main( int argc, char** argv )
 {
     // 1. Инициализация библиотеки WINsock2.
@@ -243,11 +282,14 @@ int main( int argc, char** argv )
     // Если в параметрах командной строки не установлен порт, по умолчанию 2000;
     int16_t port{ 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
+    std::string pipeName = "\\.\pipe\ConsolePipe";
+
     if ( argc > 1 )
     {
         port = std::stoi( argv[1] );
         std::string name = argv[2];
         dllName = std::wstring( name.begin(), name.end() );
+        pipeName = argv[3];
     }
     //--------------------------------------------------------------------------
 
@@ -299,12 +341,24 @@ int main( int argc, char** argv )
 
     //--------------------------------------------------------------------------
 
+    hConsolePipe = CreateThread( NULL, NULL,
+        (LPTHREAD_START_ROUTINE)consolePipe,
+        (LPVOID)&acceptData, NULL, NULL );
+
+    if ( hConsolePipe == nullptr )
+        throw std::runtime_error( "[ ERROR ] Thread ConsolePipe was not created!!" );
+
+    //--------------------------------------------------------------------------
+
     WaitForSingleObject( hAcceptServer, INFINITE );
     WaitForSingleObject( hDispatchServer, INFINITE );
     WaitForSingleObject( hGarbageCleaner, INFINITE );
+    WaitForSingleObject( hConsolePipe, INFINITE );
+
     CloseHandle( hAcceptServer );
     CloseHandle( hDispatchServer );
     CloseHandle( hGarbageCleaner );
+    CloseHandle( hConsolePipe );
 
     //--------------------------------------------------------------------------
 

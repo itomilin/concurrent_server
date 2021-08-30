@@ -36,6 +36,7 @@ struct AcceptData final
 HANDLE hAcceptServer;
 HANDLE hDispatchServer;
 HANDLE hGarbageCleaner;
+HANDLE hConsolePipe;
 
 // Обработка ошибок WINsock2.
 std::string errorHandler( const std::string& msg, const int32_t& retCode );
@@ -44,4 +45,5 @@ bool AcceptCycle( AcceptData& acceptData );
 DWORD WINAPI acceptServer( LPVOID cmd );
 DWORD WINAPI dispatchServer( LPVOID cmd );
 DWORD WINAPI garbageCleaner( LPVOID cmd );
+DWORD WINAPI consolePipe( LPVOID cmd );
 
