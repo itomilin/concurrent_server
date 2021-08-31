@@ -134,7 +134,7 @@ bool AcceptCycle( AcceptData& acceptData )
         }
         else
         {
-            std::cout << "Connected new client, socket №"
+            std::cout << "Connected new client, socket #"
                       << c.clientSock << std::endl;
             rc = true; // подключился
             
@@ -166,7 +166,7 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
 
     // 3.
     u_long nonblk;
-    if ( ioctlsocket( serverSock, FIONBIO, &( nonblk = 0 ) ) == SOCKET_ERROR )
+    if ( ioctlsocket( serverSock, FIONBIO, &( nonblk = 1 ) ) == SOCKET_ERROR )
         throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
 
     acceptData.serverSocket = serverSock;
@@ -179,11 +179,10 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
     ExitThread( *(DWORD*)cmd ); // завершение работы потока
 }
 
-DWORD WINAPI dispatchServer( LPVOID cmd ) // прототип
+DWORD WINAPI dispatchServer( LPVOID data ) // прототип
 {
-        //while ( *((TalkersCommand*)cmd) )
-    while( true )
-    //while ( *static_cast<TalkersCommand*>( cmd ) == TalkersCommand::EXIT )
+
+    while ( static_cast<AcceptData*>( data )->cmd != TalkersCommand::EXIT )
     {
         EnterCriticalSection( &scListContact );
         for ( auto& item : contacts )
@@ -207,7 +206,8 @@ DWORD WINAPI dispatchServer( LPVOID cmd ) // прототип
         Sleep( 1000 );
     }
 
-    ExitThread( *(DWORD*)cmd );
+    std::cout << "Close DISPATCH\n";
+    ExitThread( *(DWORD*)data );
 }
 
 DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
@@ -253,7 +253,7 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
         std::cout << std::endl << ErrorPipeText;
     }
 
-    //while ( true )
+    while ( true )
     {
         char buf[256]{ "\0" };
         LPDWORD countReadedBytes{};
@@ -263,9 +263,7 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
         //std::cout << "ConsolePipeCmd: "
         //    << ((AcceptData*)cmd)->cmd << std::endl;
         ( (AcceptData*)cmd )->cmd = (TalkersCommand)std::stoi(buf);
-        //Sleep( 3000 );
         std::cout << "AFTER: " << ( (AcceptData*)cmd )->cmd << std::endl;
-        //Sleep( 15000 );
     }
 
     ExitThread( *(DWORD*)cmd );

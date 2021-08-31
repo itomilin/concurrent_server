@@ -1,10 +1,9 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 
 #include <WinSock2.h>
 #include <Windows.h>
-
-#include <cstring>
 
 #pragma comment( lib, "WS2_32.lib" )
 #pragma warning ( disable: 4996 )
@@ -21,10 +20,15 @@ int main()
             NULL, OPEN_EXISTING, NULL,
             NULL ) ) == INVALID_HANDLE_VALUE )
             throw "createfile: " + GetLastError();
-        char buf[] = "2";
-        LPDWORD countReadedBytes {};
-        //ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
-        auto rc = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+        while ( true )
+        {
+            char buf[]{ "\0" };
+            std::cout << "Input a command: ";
+            std::cin.getline( buf, sizeof( buf ) );
+            LPDWORD countReadedBytes{};
+            //ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+            auto rc = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+        }
     }
     catch ( std::string ErrorPipeText )
     {
@@ -66,7 +70,7 @@ int main()
 //        recv( connSock, msg2, sizeof( msg2 ), NULL );
 //        std::cout << msg2 << std::endl;
 //    }
-//
+
     std::cin.get();
     return 0;
 }

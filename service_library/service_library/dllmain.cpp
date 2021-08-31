@@ -14,7 +14,12 @@ extern "C" __declspec( dllexport ) HANDLE SSS( char* id, LPVOID prm )
 {
     HANDLE rc = NULL;
     int i = 0;
-    while ( i < SIZETS && strcmp( TABLESERVICE_ID( i ), id ) != 0 )i++;
+    auto test = SIZETS;
+    auto test2 = TABLESERVICE_ID( i );
+
+    while ( i < SIZETS && strcmp( TABLESERVICE_ID( i ), id ) != 0 )
+        i++;
+
     if ( i < SIZETS )
         rc = CreateThread( NULL, NULL,
                            TABLESERVICE_FN( i ),
