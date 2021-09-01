@@ -1,61 +1,11 @@
 #include <iostream>
-#include <string>
-#include <cstring>
-#include <list>
-
-#include <WinSock2.h>
-#include <Windows.h>
 
 #include "accept.h"
+#include "../defs/defs.h"
 
-#pragma comment( lib, "WS2_32.lib" )
-
-#pragma warning ( disable: 4996 )
 
 CRITICAL_SECTION scListContact;
 
-struct Contact // элемент списка подключений
-{
-    enum TE
-    { // состояние сервера подключения
-        EMPTY, // пустой элемент списка подключений
-        ACCEPT, // подключен (accept), но не обслуживается
-        CONTACT // передан обслуживающему серверу
-    } type; // тип элемента списка подключений
-    enum ST
-    { // состояние обслуживающего сервера
-        WORK, // идет обмен данными с клиентом
-        ABORT, // обслуживающий сервер завершился не нормально
-        TIMEOUT, // обслуживающий сервер завершился по времени
-        FINISH // обслуживающий сервер завершился нормально
-    } sthread; // состояние обслуживающего сервера (потока)
-    SOCKET      clientSock{}; // сокет для обмена данными с клиентом
-    SOCKADDR_IN client{}; // параметры сокета
-    int32_t     sizeOfClient{}; // длина prms
-    HANDLE      hthread; // handle потока (или процесса)
-    HANDLE      htimer; // handle таймера
-    char        msg[50]{}; // сообщение
-    char        srvname[15]{}; // наименование обслуживающего сервера
-
-    char* ipAddr{};
-    char* port{};
-
-    Contact( TE t = EMPTY, const char* namesrv = "" ) // конструктор
-    {
-        memset( &client, 0, sizeof( client ) );
-        sizeOfClient = sizeof( client );
-        //ipAddr = inet_ntoa( client.sin_addr );
-
-        type = t;
-        strcpy( srvname, namesrv );
-    };
-    void SetST( ST sth, const char* m = "" )
-    {
-        sthread = sth;
-        strcpy( msg, m );
-    }
-};
-typedef std::list<Contact> ListContact; // список подключений
 ListContact contacts;
 
 // Обработка ошибок WINsock2.
@@ -166,7 +116,7 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
 
     // 3.
     u_long nonblk;
-    if ( ioctlsocket( serverSock, FIONBIO, &( nonblk = 1 ) ) == SOCKET_ERROR )
+    if ( ioctlsocket( serverSock, FIONBIO, &( nonblk = 0 ) ) == SOCKET_ERROR )
         throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
 
     acceptData.serverSocket = serverSock;
@@ -182,7 +132,8 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
 DWORD WINAPI dispatchServer( LPVOID data ) // прототип
 {
 
-    while ( static_cast<AcceptData*>( data )->cmd != TalkersCommand::EXIT )
+    //while ( static_cast<AcceptData*>( data )->cmd != TalkersCommand::EXIT )
+    while(true)
     {
         EnterCriticalSection( &scListContact );
         for ( auto& item : contacts )
@@ -235,11 +186,12 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
 {
     std::cout << "BEFORE: " << ( (AcceptData*)cmd )->cmd << std::endl;
     HANDLE hPipe; // дескриптор канала
+
     try
     {
         if ( ( hPipe = CreateNamedPipe(L"\\\\.\\pipe\\ConsolePipe",
             PIPE_ACCESS_DUPLEX, //дуплексный канал
-            PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный
+            PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный // NOWAIT
             1, NULL, NULL, // максимум 1 экземпляр
             INFINITE, NULL ) ) == INVALID_HANDLE_VALUE )
             throw errorHandler( "create:", GetLastError() );
@@ -257,15 +209,18 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
     {
         char buf[256]{ "\0" };
         LPDWORD countReadedBytes{};
-        ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
-        //std::cout << "READED: " << buf << std::endl;
-
-        //std::cout << "ConsolePipeCmd: "
-        //    << ((AcceptData*)cmd)->cmd << std::endl;
-        ( (AcceptData*)cmd )->cmd = (TalkersCommand)std::stoi(buf);
-        std::cout << "AFTER: " << ( (AcceptData*)cmd )->cmd << std::endl;
+        auto answer = ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+        if ( answer != 0 )
+        {
+            ( (AcceptData*)cmd )->cmd = (TalkersCommand)std::stoi( buf );
+            std::cout << "AFTER: " << ( (AcceptData*)cmd )->cmd << std::endl;
+        }
+        //else
+        //    DisconnectNamedPipe( hPipe );
     }
 
+    DisconnectNamedPipe( hPipe );
+    CloseHandle( hPipe );
     ExitThread( *(DWORD*)cmd );
 }
 
@@ -280,7 +235,7 @@ int main( int argc, char** argv )
     // Если в параметрах командной строки не установлен порт, по умолчанию 2000;
     int16_t port{ 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
-    std::string pipeName = "\\.\pipe\ConsolePipe";
+    std::string pipeName = "\\\\.\\pipe\\ConsolePipe";
 
     if ( argc > 1 )
     {

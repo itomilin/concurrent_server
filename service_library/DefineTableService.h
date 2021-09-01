@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Windows.h>
+
 struct __TableEntry
 {
     char __Id[9];

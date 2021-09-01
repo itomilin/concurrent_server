@@ -1,13 +1,13 @@
-// dllmain.cpp : Defines the entry point for the DLL application.
+п»ї// dllmain.cpp : Defines the entry point for the DLL application.
 #include "pch.h"
 
-#include "DefineTableService.h" // макро для TableService
-#include "PrototypeService.h" // прототипы обслуживающих потоков
+#include "DefineTableService.h" // РјР°РєСЂРѕ РґР»СЏ TableService
+#include "PrototypeService.h" // РїСЂРѕС‚РѕС‚РёРїС‹ РѕР±СЃР»СѓР¶РёРІР°СЋС‰РёС… РїРѕС‚РѕРєРѕРІ
 
-BEGIN_TABLESERVICE // таблица
+BEGIN_TABLESERVICE
 ENTRYSERVICE( "echo", EchoServer ),
 ENTRYSERVICE( "Time", TimeServer ),
-ENTRYSERVICE( "rand", ServiceServer01 )
+ENTRYSERVICE( "rand", ServiceServer )
 END_TABLESERVICE;
 
 extern "C" __declspec( dllexport ) HANDLE SSS( char* id, LPVOID prm )
@@ -21,10 +21,13 @@ extern "C" __declspec( dllexport ) HANDLE SSS( char* id, LPVOID prm )
         i++;
 
     if ( i < SIZETS )
+    {
         rc = CreateThread( NULL, NULL,
-                           TABLESERVICE_FN( i ),
-                           prm,
-                           NULL, NULL );
+            TABLESERVICE_FN( i ),
+            prm,
+            NULL, NULL );
+    }
+
     return rc;
 };
 
