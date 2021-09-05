@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "accept.h"
-#include "../defs/defs.h"
 
 
 CRITICAL_SECTION scListContact;
@@ -76,7 +75,8 @@ bool AcceptCycle( AcceptData& acceptData )
         c.clientSock = accept( acceptData.serverSocket,
                                (SOCKADDR*)&c.client,
                                &c.sizeOfClient );
-        recv( c.clientSock, c.msg, sizeof( c.msg ), NULL );
+        //auto t = recv( c.clientSock, c.msg, sizeof( c.msg ), NULL );
+
         if ( c.clientSock == INVALID_SOCKET )
         {
             if ( WSAGetLastError() != WSAEWOULDBLOCK )
@@ -84,14 +84,15 @@ bool AcceptCycle( AcceptData& acceptData )
         }
         else
         {
-            std::cout << "Connected new client, socket #"
-                      << c.clientSock << std::endl;
+            //std::cout << "Connected new client, socket #"
+            //          << c.clientSock << std::endl;
             rc = true; // подключилс€
-            
+            c.type = Contact::ACCEPT;
             contacts.push_back( c );
             
         }
         LeaveCriticalSection( &scListContact );
+        Sleep( 100 );
     }
     
     return rc;
@@ -115,12 +116,14 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
     listen( serverSock, SOMAXCONN );
 
     // 3.
-    u_long nonblk;
-    if ( ioctlsocket( serverSock, FIONBIO, &( nonblk = 0 ) ) == SOCKET_ERROR )
+    u_long nonblk = 1;
+    if ( ioctlsocket( serverSock, FIONBIO, &nonblk ) == SOCKET_ERROR )
         throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
 
     acceptData.serverSocket = serverSock;
     commandsCycle( acceptData );
+
+
 
     // 6.
     closesocket( serverSock );
@@ -131,30 +134,64 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
 
 DWORD WINAPI dispatchServer( LPVOID data ) // прототип
 {
-
     //while ( static_cast<AcceptData*>( data )->cmd != TalkersCommand::EXIT )
     while(true)
     {
         EnterCriticalSection( &scListContact );
         for ( auto& item : contacts )
         {
-            // ≈сли команда от клиента была неправильна€, то поток не будет создан.
-            auto htread = ts( const_cast<char*>( item.msg ), ( LPVOID ) & ( item ) );
-            
-            // ѕровер€ем если ts возвращает nullptr, значит поток не был создан.
-            if ( htread != nullptr )
-                item.hthread = htread;
-            else
+            /**
+            * ѕоскольку сокет работает в неблокирующем режиме, то когда клиент
+            * не вызвал send, значение recv возвращает SOCKET_ERROR. ѕоэтому как только
+            * сообщение было отправлено с клиента, запускаем обслужвающий поток.
+            * “акже не обрабатываем клиентов, которые уже в режиме обслуживани€.
+            */
+            if ( recv( item.clientSock,
+                       item.msg,
+                       sizeof( item.msg ), NULL ) != SOCKET_ERROR
+                && item.sthread != Contact::WORK )
             {
-                char msg[] = "ErrorInquiry";
-                send( item.clientSock, msg, sizeof( msg ), NULL );
-                item.SetST( Contact::FINISH, msg );
-                closesocket( item.clientSock );
+                //item.htimer = CreateWaitableTimer( NULL, FALSE, L"timer1" );
+                //if ( NULL == item.htimer )
+                //    printf( "CreateWaitableTimer failed (%d)\n", GetLastError() );
+
+                //LARGE_INTEGER fTime;
+                //fTime.QuadPart = -60000000LL;
+                //if ( !SetWaitableTimer( item.htimer, &fTime, NULL,
+                //    ASFinishMessage, (LPVOID*)&item, FALSE ) )
+                //    printf( "SetWaitableTimer failed (%d)\n", GetLastError() );
+
+                //SleepEx( INFINITE, TRUE );
+                /*if ( WaitForSingleObject( htimer, INFINITE ) != WAIT_OBJECT_0 )
+                    printf( "WaitForSingleObject failed (%d)\n", GetLastError() );
+                else
+                    printf( "Timer was signaled.\n" );*/
+                /**
+                * ≈сли команда от клиента была неправильна€, то поток не будет создан.
+                * ƒопустимые команды echo|time|rand.
+                */
+                
+                auto htread = ts( const_cast<char*>( item.msg ), (LPVOID&)( item ) );
+
+                //// ѕровер€ем если ts возвращает nullptr, значит поток не был создан.
+                char msg[256] = "ErrorInquiry";
+                if ( htread != nullptr )
+                {
+                    std::strcpy( msg, "Connected to service_server." );
+                    send( item.clientSock, msg, sizeof( msg ), NULL );
+                    item.hthread = htread;
+                }
+                else
+                {
+                    send( item.clientSock, msg, sizeof( msg ), NULL );
+                    item.SetST( Contact::FINISH, msg );
+                    closesocket( item.clientSock );
+                }
+                //std::cout << "Client msg: " << item.msg << std::endl;
             }
-            std::cout << "Client msg: " << item.msg << std::endl;
         }
         LeaveCriticalSection( &scListContact );
-        Sleep( 1000 );
+        Sleep( 100 );
     }
 
     std::cout << "Close DISPATCH\n";
@@ -168,6 +205,7 @@ DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
         EnterCriticalSection( &scListContact );
         for ( auto it = contacts.begin(); it != contacts.end(); )
         {
+            auto test = it->sthread;
             it = it->sthread == Contact::FINISH ?
                 contacts.erase( it ) : std::next( it );
             //auto item = *it;
@@ -176,7 +214,7 @@ DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
             
         }
         LeaveCriticalSection( &scListContact );
-        Sleep( 1000 );
+        Sleep( 100 );
     }
 
     ExitThread( *(DWORD*)cmd );
@@ -254,7 +292,7 @@ int main( int argc, char** argv )
     if ( st == nullptr )
         throw std::runtime_error( "[ ERROR] DLL not loaded!!" );
 
-    ts = ( HANDLE( * )( char*, LPVOID ) )GetProcAddress( st, "SSS" );
+    ts = ( HANDLE( * )( const char*, LPVOID& ) )GetProcAddress( st, "SSS" );
     if ( ts == nullptr )
         throw std::runtime_error( "[ ERROR] Import DLL function!!" );
     

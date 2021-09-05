@@ -46,6 +46,7 @@ struct Contact // элемент списка подключений
         type = t;
         strcpy( srvname, namesrv );
     };
+
     void SetST( ST sth, const char* m = "" )
     {
         sthread = sth;

@@ -9,9 +9,22 @@
 #include <Windows.h>
 #pragma comment( lib, "WS2_32.lib" )
 
+#include "../defs/defs.h"
+
 #define AS_SQUIRT 10
 
-HANDLE( *ts )( char*, LPVOID );
+VOID CALLBACK ASWtimer( LPVOID lpArgToCompletionRoutine, DWORD dwTimerLowValue, DWORD dwTimerHighValue )
+{
+    std::cout << "CALL ASWTIMER" << std::endl;
+}
+
+VOID CALLBACK ASFinishMessage( LPVOID lpArgToCompletionRoutine, DWORD dwTimerLowValue, DWORD dwTimerHighValue )
+{
+    //CancelWaitableTimer(  );
+    std::cout << "CALL ASFINISHMEESAGE" << std::endl;
+}
+
+HANDLE( *ts )( const char*, LPVOID& );
 
 // Команды для сервера.
 enum TalkersCommand

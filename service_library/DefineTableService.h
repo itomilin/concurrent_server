@@ -4,8 +4,8 @@
 
 struct __TableEntry
 {
-    char __Id[9];
-    DWORD( ( WINAPI* __Fn ) ) ( LPVOID );
+    const char __Id[9];
+    DWORD( ( WINAPI* __Fn ) ) ( LPVOID& );
 };
 #define BEGIN_TABLESERVICE __TableEntry __TableService[] = {
 #define ENTRYSERVICE(s,t) {s,t}

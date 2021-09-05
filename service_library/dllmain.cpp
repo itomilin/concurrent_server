@@ -10,12 +10,11 @@ ENTRYSERVICE( "Time", TimeServer ),
 ENTRYSERVICE( "rand", ServiceServer )
 END_TABLESERVICE;
 
-extern "C" __declspec( dllexport ) HANDLE SSS( char* id, LPVOID prm )
+extern "C" __declspec( dllexport ) HANDLE SSS( const char* id, LPVOID& item )
 {
     HANDLE rc = NULL;
+
     int i = 0;
-    auto test = SIZETS;
-    auto test2 = TABLESERVICE_ID( i );
 
     while ( i < SIZETS && strcmp( TABLESERVICE_ID( i ), id ) != 0 )
         i++;
@@ -23,8 +22,8 @@ extern "C" __declspec( dllexport ) HANDLE SSS( char* id, LPVOID prm )
     if ( i < SIZETS )
     {
         rc = CreateThread( NULL, NULL,
-            TABLESERVICE_FN( i ),
-            prm,
+            (LPTHREAD_START_ROUTINE)TABLESERVICE_FN( i ),
+            (LPVOID)&item,
             NULL, NULL );
     }
 
