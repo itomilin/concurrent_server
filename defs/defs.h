@@ -10,6 +10,17 @@
 #pragma comment( lib, "WS2_32.lib" )
 #pragma warning ( disable: 4996 )
 
+// Команды для сервера.
+enum TalkersCommand
+{
+    START,
+    STOP,
+    EXIT,
+    STATISTICS,
+    WAIT,
+    SHUTDOWN,
+    GETCOMMAND
+};
 
 struct Contact // элемент списка подключений
 {

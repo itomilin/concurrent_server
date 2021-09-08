@@ -1,6 +1,8 @@
 #include <iostream>
 
 #include "accept.h"
+#include <thread>
+#include <future>
 
 
 CRITICAL_SECTION scListContact;
@@ -157,20 +159,15 @@ DWORD WINAPI dispatchServer( LPVOID data ) // прототип
 
                 //LARGE_INTEGER fTime;
                 //fTime.QuadPart = -60000000LL;
-                //if ( !SetWaitableTimer( item.htimer, &fTime, NULL,
-                //    ASFinishMessage, (LPVOID*)&item, FALSE ) )
+                //if ( !SetWaitableTimerEx( item.htimer, &fTime, NULL,
+                //    ASFinishMessage, (LPVOID*)&item, FALSE, TRUE ) )
                 //    printf( "SetWaitableTimer failed (%d)\n", GetLastError() );
 
-                //SleepEx( INFINITE, TRUE );
-                /*if ( WaitForSingleObject( htimer, INFINITE ) != WAIT_OBJECT_0 )
-                    printf( "WaitForSingleObject failed (%d)\n", GetLastError() );
-                else
-                    printf( "Timer was signaled.\n" );*/
                 /**
                 * Если команда от клиента была неправильная, то поток не будет создан.
                 * Допустимые команды echo|time|rand.
                 */
-                
+                //Sleep( 50 );
                 auto htread = ts( const_cast<char*>( item.msg ), (LPVOID&)( item ) );
 
                 //// Проверяем если ts возвращает nullptr, значит поток не был создан.
@@ -179,7 +176,7 @@ DWORD WINAPI dispatchServer( LPVOID data ) // прототип
                 {
                     std::strcpy( msg, "Connected to service_server." );
                     send( item.clientSock, msg, sizeof( msg ), NULL );
-                    item.hthread = htread;
+                    item.hthread = hDispatchServer;
                 }
                 else
                 {
@@ -187,7 +184,8 @@ DWORD WINAPI dispatchServer( LPVOID data ) // прототип
                     item.SetST( Contact::FINISH, msg );
                     closesocket( item.clientSock );
                 }
-                //std::cout << "Client msg: " << item.msg << std::endl;
+                Sleep( 1000 );
+                //SleepEx( INFINITE, TRUE );
             }
         }
         LeaveCriticalSection( &scListContact );
@@ -206,12 +204,19 @@ DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
         for ( auto it = contacts.begin(); it != contacts.end(); )
         {
             auto test = it->sthread;
+
+            //if ( it->sthread == Contact::FINISH )
+            //{
+            //    contacts.erase( it );
+            //    std::cout << "Disconnected client: " << it->clientSock << std::endl;
+            //}
+            //else
+            //{
+            //    it = std::next( it );
+            //}
+            
             it = it->sthread == Contact::FINISH ?
                 contacts.erase( it ) : std::next( it );
-            //auto item = *it;
-            //if ( item.sthread == Contact::FINISH )
-            //    contacts.erase( it );
-            
         }
         LeaveCriticalSection( &scListContact );
         Sleep( 100 );
@@ -264,6 +269,7 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
 
 int main( int argc, char** argv )
 {
+    std::cout << "thread id main " << GetCurrentThreadId() << std::endl;
     // 1. Инициализация библиотеки WINsock2.
     WSADATA wsaData;
     if ( WSAStartup( MAKEWORD( 2, 0 ), &wsaData ) == EXIT_SUCCESS )

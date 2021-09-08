@@ -9,6 +9,20 @@
 #pragma warning ( disable: 4996 )
 SOCKET connSock;
 
+
+class Client final
+{
+public:
+    Client( const int16_t& port );
+    ~Client();
+
+    void SendMessage( const std::string& msg );
+
+private:
+
+};
+
+
 void ClientHandler()
 {
     char answer[256];

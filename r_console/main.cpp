@@ -4,6 +4,8 @@
 #include <WinSock2.h>
 #include <Windows.h>
 
+#include "../defs/defs.h"
+
 int main()
 {
     HANDLE hPipe; // дескриптор канала

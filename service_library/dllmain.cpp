@@ -6,7 +6,7 @@
 
 BEGIN_TABLESERVICE
 ENTRYSERVICE( "echo", EchoServer ),
-ENTRYSERVICE( "Time", TimeServer ),
+ENTRYSERVICE( "time", TimeServer ),
 ENTRYSERVICE( "rand", ServiceServer )
 END_TABLESERVICE;
 
