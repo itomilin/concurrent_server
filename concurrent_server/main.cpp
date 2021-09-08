@@ -9,6 +9,9 @@ CRITICAL_SECTION scListContact;
 
 ListContact contacts;
 
+//  оманда управлени€ дл€ сервера.
+volatile auto cmd = TalkersCommand::START;
+
 // ќбработка ошибок WINsock2.
 std::string errorHandler( const std::string& msg, const int32_t& retCode )
 {
@@ -29,19 +32,17 @@ std::string errorHandler( const std::string& msg, const int32_t& retCode )
 void commandsCycle( AcceptData& acceptData )
 {
     int32_t squirt{ 0 };
-    while ( acceptData.cmd != TalkersCommand::EXIT )
+    while ( cmd != TalkersCommand::EXIT )
     {
-        switch ( acceptData.cmd )
+        switch ( cmd )
         {
         case TalkersCommand::START:
-            acceptData.cmd = TalkersCommand::GETCOMMAND;
+            cmd = TalkersCommand::GETCOMMAND;
             squirt = AS_SQUIRT;
             break;
         case TalkersCommand::STOP:
+            std::cout << "Forbidden new connections." << std::endl;
             continue;
-            //break;
-        //case TalkersCommand::EXIT:
-        //    break;
         case TalkersCommand::STATISTICS:
             break;
         case TalkersCommand::WAIT:
@@ -57,7 +58,7 @@ void commandsCycle( AcceptData& acceptData )
 
         if ( AcceptCycle( acceptData ) )
         {
-            acceptData.cmd = TalkersCommand::GETCOMMAND;
+            cmd = TalkersCommand::GETCOMMAND;
         }
         else
         {
@@ -100,9 +101,10 @@ bool AcceptCycle( AcceptData& acceptData )
     return rc;
 };
 
-DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
+// thread
+DWORD WINAPI acceptServer( LPVOID data )
 {
-    auto acceptData = *( (AcceptData*)cmd );
+    auto acceptData = *( (AcceptData*)data );
     constexpr char ip[] = "127.0.0.1";
 
     // 2.
@@ -125,19 +127,17 @@ DWORD WINAPI acceptServer( LPVOID cmd ) // прототип
     acceptData.serverSocket = serverSock;
     commandsCycle( acceptData );
 
-
-
     // 6.
     closesocket( serverSock );
     WSACleanup();
 
-    ExitThread( *(DWORD*)cmd ); // завершение работы потока
+    ExitThread( *(DWORD*)data ); // завершение работы потока
 }
 
-DWORD WINAPI dispatchServer( LPVOID data ) // прототип
+//thread
+DWORD WINAPI dispatchServer( LPVOID data )
 {
-    //while ( static_cast<AcceptData*>( data )->cmd != TalkersCommand::EXIT )
-    while(true)
+    while( cmd != TalkersCommand::EXIT )
     {
         EnterCriticalSection( &scListContact );
         for ( auto& item : contacts )
@@ -196,9 +196,9 @@ DWORD WINAPI dispatchServer( LPVOID data ) // прототип
     ExitThread( *(DWORD*)data );
 }
 
-DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
+DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
 {
-    while ( true )
+    while ( cmd != TalkersCommand::EXIT )
     {
         EnterCriticalSection( &scListContact );
         for ( auto it = contacts.begin(); it != contacts.end(); )
@@ -222,12 +222,13 @@ DWORD WINAPI garbageCleaner( LPVOID cmd ) // прототип
         Sleep( 100 );
     }
 
-    ExitThread( *(DWORD*)cmd );
+    ExitThread( *(DWORD*)data );
 }
 
-DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
+DWORD WINAPI consolePipe( LPVOID data ) // прототип
 {
-    std::cout << "BEFORE: " << ( (AcceptData*)cmd )->cmd << std::endl;
+    constexpr char err_cmd[] { "nocmd" };
+    
     HANDLE hPipe; // дескриптор канала
 
     try
@@ -240,31 +241,42 @@ DWORD WINAPI consolePipe( LPVOID cmd ) // прототип
             throw errorHandler( "create:", GetLastError() );
         if ( !ConnectNamedPipe( hPipe, NULL ) ) // ожидать клиента
             throw errorHandler( "connect:", GetLastError() );
-        
-
     }
     catch ( std::string ErrorPipeText )
     {
         std::cout << std::endl << ErrorPipeText;
     }
 
-    while ( true )
+    while ( cmd != TalkersCommand::EXIT )
     {
-        char buf[256]{ "\0" };
-        LPDWORD countReadedBytes{};
+        char buf[256] {"\0"};
+        LPDWORD countReadedBytes {};
         auto answer = ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
-        if ( answer != 0 )
+        bool is_correct = false;
+        if ( answer != FALSE )
         {
-            ( (AcceptData*)cmd )->cmd = (TalkersCommand)std::stoi( buf );
-            std::cout << "AFTER: " << ( (AcceptData*)cmd )->cmd << std::endl;
+            // ѕроходим по всем командам, чтобы определить корректна€ ли команда была отправлена.
+            for ( std::size_t i = TalkersCommand::START; i < TalkersCommand::SHUTDOWN; ++i )
+            {
+                if ( i == (TalkersCommand)std::stoi( buf ) )
+                {
+                    // ћен€ем текущую команду.
+                    cmd = (TalkersCommand)std::stoi( buf );
+                    // ќтправл€ем удаленной консоли эту же команду.
+                    auto answer = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+                    is_correct = true;
+                    break;
+                }
+            }
+
+            if ( !is_correct )
+                auto answer = WriteFile( hPipe, err_cmd, sizeof( err_cmd ), countReadedBytes, NULL );
         }
-        //else
-        //    DisconnectNamedPipe( hPipe );
     }
 
     DisconnectNamedPipe( hPipe );
     CloseHandle( hPipe );
-    ExitThread( *(DWORD*)cmd );
+    ExitThread( *(DWORD*)data );
 }
 
 int main( int argc, char** argv )
@@ -277,7 +289,7 @@ int main( int argc, char** argv )
     else
         throw errorHandler( "WSAStartup: ", WSAGetLastError() );
     // ≈сли в параметрах командной строки не установлен порт, по умолчанию 2000;
-    int16_t port{ 2000 };
+    int16_t port { 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
     std::string pipeName = "\\\\.\\pipe\\ConsolePipe";
 
@@ -301,13 +313,10 @@ int main( int argc, char** argv )
     ts = ( HANDLE( * )( const char*, LPVOID& ) )GetProcAddress( st, "SSS" );
     if ( ts == nullptr )
         throw std::runtime_error( "[ ERROR] Import DLL function!!" );
-    
-    //  оманда управлени€ дл€ сервера.
-    volatile auto cmd = TalkersCommand::START;
 
     //--------------------------------------------------------------------------
 
-    AcceptData acceptData;
+    AcceptData acceptData {};
     acceptData.cmd = cmd;
     acceptData.port = port;
 
@@ -360,6 +369,8 @@ int main( int argc, char** argv )
     //--------------------------------------------------------------------------
 
     FreeLibrary( st );
+
+    std::cout << "<<<The server has shutdown>>>" << std::endl;
 
     return EXIT_SUCCESS;
 }
