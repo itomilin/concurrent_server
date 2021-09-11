@@ -59,7 +59,7 @@ int main()
         auto answer = ReadFile( hPipe, out_msg, sizeof( out_msg ), countReadedBytes2, NULL );
         std::cout << "Answer is: " << out_msg << std::endl << std::endl;
 
-        if ( input == 2 )
+        if ( input == 2 || input == 5 )
             break;
     }
 

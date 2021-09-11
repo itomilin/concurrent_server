@@ -38,7 +38,6 @@ void commandsCycle( AcceptData& acceptData )
         {
         case TalkersCommand::START:
             cmd = TalkersCommand::GETCOMMAND;
-            squirt = AS_SQUIRT;
             break;
         case TalkersCommand::STOP:
             std::cout << "Forbidden new connections." << std::endl;
@@ -46,24 +45,51 @@ void commandsCycle( AcceptData& acceptData )
         case TalkersCommand::STATISTICS:
             break;
         case TalkersCommand::WAIT:
+        {
+            auto it = std::find_if( contacts.begin(), contacts.end(),
+                []( const Contact& item )
+                {
+                    return item.sthread == Contact::WORK;
+                } );
+            if ( it == contacts.end() )
+            {
+                squirt = AS_SQUIRT;
+                acceptData.squirt = squirt;
+                AcceptCycle( acceptData );
+            }
+
             break;
+        }
         case TalkersCommand::SHUTDOWN:
+        {
+            auto it = std::find_if( contacts.begin(), contacts.end(),
+                []( const Contact& item )
+                {
+                    return item.sthread == Contact::WORK;
+                } );
+            if ( it == contacts.end() )
+                cmd = TalkersCommand::EXIT;
+
             break;
+        }
         case TalkersCommand::GETCOMMAND:
+        {
+            squirt = AS_SQUIRT;
+            acceptData.squirt = squirt;
+            AcceptCycle( acceptData );
             break;
         }
-
-        //std::cout << "Accepted cmd: " << acceptData.cmd << std::endl;
-        acceptData.squirt = squirt;
-
-        if ( AcceptCycle( acceptData ) )
-        {
-            cmd = TalkersCommand::GETCOMMAND;
         }
-        else
-        {
-            SleepEx( 0, TRUE );
-        }
+        //acceptData.squirt = squirt;
+        //if ( AcceptCycle( acceptData ) )
+        //{
+        //    /*cmd = TalkersCommand::GETCOMMAND;*/
+        //}
+        //else
+        //{
+        //    SleepEx( 0, TRUE );
+        //}
+        Sleep( 100 );
     }
 }
 
@@ -95,7 +121,7 @@ bool AcceptCycle( AcceptData& acceptData )
             
         }
         LeaveCriticalSection( &scListContact );
-        Sleep( 100 );
+        /*Sleep( 100 );*/
     }
     
     return rc;
@@ -131,6 +157,7 @@ DWORD WINAPI acceptServer( LPVOID data )
     closesocket( serverSock );
     WSACleanup();
 
+    std::cout << "Close ACCEPT server" << std::endl;
     ExitThread( *(DWORD*)data ); // завершение работы потока
 }
 
@@ -181,7 +208,7 @@ DWORD WINAPI dispatchServer( LPVOID data )
                 else
                 {
                     send( item.clientSock, msg, sizeof( msg ), NULL );
-                    item.SetST( Contact::FINISH, msg );
+                    item.SetST( Contact::ABORT, msg );
                     closesocket( item.clientSock );
                 }
                 Sleep( 1000 );
@@ -192,7 +219,7 @@ DWORD WINAPI dispatchServer( LPVOID data )
         Sleep( 100 );
     }
 
-    std::cout << "Close DISPATCH\n";
+    std::cout << "Close DISPATCH" << std::endl;
     ExitThread( *(DWORD*)data );
 }
 
@@ -222,6 +249,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
         Sleep( 100 );
     }
 
+    std::cout << "Close GB cleaner" << std::endl;
     ExitThread( *(DWORD*)data );
 }
 
@@ -249,14 +277,17 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
 
     while ( cmd != TalkersCommand::EXIT )
     {
-        char buf[256] {"\0"};
+        char buf[256] { "\0" };
         LPDWORD countReadedBytes {};
         auto answer = ReadFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
         bool is_correct = false;
         if ( answer != FALSE )
         {
-            // ѕроходим по всем командам, чтобы определить корректна€ ли команда была отправлена.
-            for ( std::size_t i = TalkersCommand::START; i < TalkersCommand::SHUTDOWN; ++i )
+            /**
+            * ѕроходим по всем командам, определенным в Enum,
+            * чтобы определить корректна€ ли команда была отправлена.
+            */
+            for ( std::size_t i = TalkersCommand::START; i <= TalkersCommand::SHUTDOWN; ++i )
             {
                 if ( i == (TalkersCommand)std::stoi( buf ) )
                 {
@@ -276,6 +307,8 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
 
     DisconnectNamedPipe( hPipe );
     CloseHandle( hPipe );
+
+    std::cout << "Close PIPE" << std::endl;
     ExitThread( *(DWORD*)data );
 }
 

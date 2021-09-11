@@ -185,6 +185,7 @@ DWORD WINAPI ServiceServer( LPVOID& item )
             srand( time( NULL ) );
             uint32_t buf = rand() << 16;
             char num_char[10];
+            // Копируем buf в num_char.
             std::sprintf( num_char, "%d", buf );
             printf( "randnumv: %s\n", num_char );
             // Отправляем прочитанное сообщение обратно клиенту.
