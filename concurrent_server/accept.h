@@ -91,6 +91,7 @@ HANDLE hAcceptServer;
 HANDLE hDispatchServer;
 HANDLE hGarbageCleaner;
 HANDLE hConsolePipe;
+HANDLE hResponseServer;
 
 // Обработка ошибок WINsock2.
 std::string errorHandler( const std::string& msg, const int32_t& retCode );
@@ -100,4 +101,13 @@ DWORD WINAPI acceptServer( LPVOID cmd );
 DWORD WINAPI dispatchServer( LPVOID cmd );
 DWORD WINAPI garbageCleaner( LPVOID cmd );
 DWORD WINAPI consolePipe( LPVOID cmd );
+DWORD WINAPI responseServer( LPVOID cmd );
+
+// TODO: Вынести в поле класса.
+SOCKET SERVER_SOCK{};
+
+bool putAnswerToClient( const char* name,
+    const sockaddr* to,
+    const int32_t* lTo,
+    const SOCKET& serverSock );
 

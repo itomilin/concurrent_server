@@ -6,6 +6,7 @@
 
 
 CRITICAL_SECTION scListContact;
+CRITICAL_SECTION csBroadcastRequest;
 
 ListContact contacts;
 
@@ -80,16 +81,8 @@ void commandsCycle( AcceptData& acceptData )
             break;
         }
         }
-        //acceptData.squirt = squirt;
-        //if ( AcceptCycle( acceptData ) )
-        //{
-        //    /*cmd = TalkersCommand::GETCOMMAND;*/
-        //}
-        //else
-        //{
-        //    SleepEx( 0, TRUE );
-        //}
-        Sleep( 100 );
+
+        Sleep( 10 );
     }
 }
 
@@ -104,7 +97,6 @@ bool AcceptCycle( AcceptData& acceptData )
         c.clientSock = accept( acceptData.serverSocket,
                                (SOCKADDR*)&c.client,
                                &c.sizeOfClient );
-        //auto t = recv( c.clientSock, c.msg, sizeof( c.msg ), NULL );
 
         if ( c.clientSock == INVALID_SOCKET )
         {
@@ -113,45 +105,99 @@ bool AcceptCycle( AcceptData& acceptData )
         }
         else
         {
-            //std::cout << "Connected new client, socket #"
-            //          << c.clientSock << std::endl;
             rc = true; // подключился
             c.type = Contact::ACCEPT;
             contacts.push_back( c );
-            
         }
         LeaveCriticalSection( &scListContact );
-        /*Sleep( 100 );*/
+        Sleep( 10 );
     }
     
     return rc;
 };
 
+bool getRequestFromClient( char*          name,
+                           sockaddr*      from,
+                           int32_t*       fLen,
+                           const SOCKET&  serverSock )
+{
+    bool rc = false;
+    // Позывной сервера. TODO: Вынести в поле класса.
+    constexpr char callSign[] = "helloserver";
+    
+    // Структура сокета клиента, заполняется при вызове recvfrom.
+    while ( recvfrom( serverSock, name, 256, NULL, from, fLen ) != SOCKET_ERROR )
+    {
+        // Если сообщение является позывным, выходим из цикла и возвращаем true.
+        if ( std::strcmp( name, callSign ) == NULL )
+        {
+            rc = true;
+            break;
+        }
+        else
+        {
+            const char errMsg[] {'\0'};
+            putAnswerToClient( errMsg, from, fLen, SERVER_SOCK);
+        }
+    }
+
+    if ( WSAGetLastError() == WSAETIMEDOUT )
+        return rc;
+    else if ( WSAGetLastError() == WSAEWOULDBLOCK ) // currently no data available
+    {
+        std::cout << WSAGetLastError() << std::endl;
+    }
+    else if ( WSAGetLastError() != NULL )
+        std::cout << WSAGetLastError() << std::endl;
+        //throw errorHandler( "Server recfrom: ", WSAGetLastError() );
+
+    return rc;
+}
+
+bool putAnswerToClient( const char*     name,
+                        const sockaddr* to,
+                        const int32_t*  lTo,
+                        const SOCKET&   serverSock )
+{
+     return sendto( serverSock, name, 256/*strlen( name ) + 1*/, NULL, to, *lTo )
+         == SOCKET_ERROR ? false : true;
+}
+
 // thread
 DWORD WINAPI acceptServer( LPVOID data )
 {
     auto acceptData = *( (AcceptData*)data );
-    constexpr char ip[] = "127.0.0.1";
 
     // 2.
-    SOCKET serverSock = socket( AF_INET, SOCK_STREAM, NULL );
-
-    SOCKADDR_IN server;
-    int32_t sizeOfServer = sizeof( server );
-    server.sin_addr.S_un.S_addr = inet_addr( ip );
+    SOCKET serverSockTCP = socket( AF_INET, SOCK_STREAM, NULL );
+    SOCKET serverSock = socket( AF_INET, SOCK_DGRAM, NULL );
+    SERVER_SOCK = serverSock;
+    
+    // Параметры сокета сервера.
+    SOCKADDR_IN server {};
+    server.sin_addr.S_un.S_addr = INADDR_ANY;
     server.sin_port = htons( acceptData.port );
     server.sin_family = AF_INET;
 
-    bind( serverSock, (LPSOCKADDR)&server, sizeof( server ) );
-    listen( serverSock, SOMAXCONN );
+    if ( bind( serverSock, (SOCKADDR*)&server, sizeof( server ) ) == SOCKET_ERROR )
+        throw errorHandler( "Server bind: ", WSAGetLastError() );
+
+    if ( bind( serverSockTCP, (SOCKADDR*)&server, sizeof( server ) ) == SOCKET_ERROR )
+        throw errorHandler( "Server bind: ", WSAGetLastError() );
+    listen( serverSockTCP, SOMAXCONN );
 
     // 3.
     u_long nonblk = 1;
     if ( ioctlsocket( serverSock, FIONBIO, &nonblk ) == SOCKET_ERROR )
         throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
 
-    acceptData.serverSocket = serverSock;
+    if ( ioctlsocket( serverSockTCP, FIONBIO, &nonblk ) == SOCKET_ERROR )
+        throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
+
+    acceptData.serverSocket = serverSockTCP;
     commandsCycle( acceptData );
+
+    Sleep( INFINITE );
 
     // 6.
     closesocket( serverSock );
@@ -174,10 +220,14 @@ DWORD WINAPI dispatchServer( LPVOID data )
             * не вызвал send, значение recv возвращает SOCKET_ERROR. Поэтому как только
             * сообщение было отправлено с клиента, запускаем обслужвающий поток.
             * Также не обрабатываем клиентов, которые уже в режиме обслуживания.
-            */
-            if ( recv( item.clientSock,
-                       item.msg,
-                       sizeof( item.msg ), NULL ) != SOCKET_ERROR
+            *///( recvfrom( serverSock, name, 256, NULL, from, fLen ) != SOCKET_ERROR )
+            //EnterCriticalSection( &csBroadcastRequest );
+            //auto rc = recvfrom( SERVER_SOCK, item.msg, 256, NULL,
+            //    (sockaddr*)&item.client,
+            //    &item.sizeOfClient );
+            //std::cout << "LOCK SECTION DISPATCH" << std::endl;
+            //LeaveCriticalSection( &csBroadcastRequest );
+            if ( std::strcmp( item.msg, "helloserver" ) != 0
                 && item.sthread != Contact::WORK )
             {
                 //item.htimer = CreateWaitableTimer( NULL, FALSE, L"timer1" );
@@ -214,9 +264,10 @@ DWORD WINAPI dispatchServer( LPVOID data )
                 Sleep( 1000 );
                 //SleepEx( INFINITE, TRUE );
             }
+            
         }
         LeaveCriticalSection( &scListContact );
-        Sleep( 100 );
+        Sleep( 1500 );
     }
 
     std::cout << "Close DISPATCH" << std::endl;
@@ -312,6 +363,32 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
     ExitThread( *(DWORD*)data );
 }
 
+DWORD WINAPI responseServer( LPVOID data ) // прототип
+{
+    while ( cmd != TalkersCommand::EXIT )
+    {
+        // Параметры сокета клиента.
+        SOCKADDR_IN client{};
+        char buf[256]{};
+        int32_t sizeOfClient = sizeof( client );
+        int32_t acceptedBytes{};
+
+        std::cout << "LOCK SECTION RESPONCE" << std::endl;
+        if ( getRequestFromClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
+        {
+            std::cout << "Request was recieved..." << std::endl;
+            if ( putAnswerToClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
+            {
+                std::cout << "Answer was sent..." << std::endl;
+            }
+        }
+        Sleep( 500 );
+    }
+
+    std::cout << "Close responseServer." << std::endl;
+    ExitThread( *(DWORD*)data );
+}
+
 int main( int argc, char** argv )
 {
     std::cout << "thread id main " << GetCurrentThreadId() << std::endl;
@@ -322,20 +399,23 @@ int main( int argc, char** argv )
     else
         throw errorHandler( "WSAStartup: ", WSAGetLastError() );
     // Если в параметрах командной строки не установлен порт, по умолчанию 2000;
-    int16_t port { 2000 };
+    int16_t UDPPort { 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
     std::string pipeName = "\\\\.\\pipe\\ConsolePipe";
+    std::string callSign = "helloserver";
 
     if ( argc > 1 )
     {
-        port = std::stoi( argv[1] );
+        UDPPort = std::stoi( argv[1] );
         std::string name = argv[2];
         dllName = std::wstring( name.begin(), name.end() );
         pipeName = argv[3];
+        callSign = argv[4];
     }
     //--------------------------------------------------------------------------
 
     InitializeCriticalSection( &scListContact );
+    InitializeCriticalSection( &csBroadcastRequest );
 
     //--------------------------------------------------------------------------
 
@@ -351,7 +431,7 @@ int main( int argc, char** argv )
 
     AcceptData acceptData {};
     acceptData.cmd = cmd;
-    acceptData.port = port;
+    acceptData.port = UDPPort;
 
     hAcceptServer = CreateThread( NULL, NULL,
         (LPTHREAD_START_ROUTINE)acceptServer,
@@ -388,16 +468,28 @@ int main( int argc, char** argv )
         throw std::runtime_error( "[ ERROR ] Thread ConsolePipe was not created!!" );
 
     //--------------------------------------------------------------------------
+    Sleep( 100 );
+    hResponseServer = CreateThread( NULL, NULL,
+        (LPTHREAD_START_ROUTINE)responseServer,
+        (LPVOID)&acceptData, NULL, NULL );
+
+    if ( hResponseServer == nullptr )
+        throw std::runtime_error( "[ ERROR ] Thread ResponseServer was not created!!" );
+
+    //--------------------------------------------------------------------------
 
     WaitForSingleObject( hAcceptServer, INFINITE );
     WaitForSingleObject( hDispatchServer, INFINITE );
     WaitForSingleObject( hGarbageCleaner, INFINITE );
     WaitForSingleObject( hConsolePipe, INFINITE );
+    Sleep( 100 );
+    WaitForSingleObject( hResponseServer, INFINITE );
 
     CloseHandle( hAcceptServer );
     CloseHandle( hDispatchServer );
     CloseHandle( hGarbageCleaner );
     CloseHandle( hConsolePipe );
+    CloseHandle( hResponseServer );
 
     //--------------------------------------------------------------------------
 

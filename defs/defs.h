@@ -39,10 +39,10 @@ struct Contact // элемент списка подключений
     } sthread; // состо€ние обслуживающего сервера (потока)
     SOCKET      clientSock{}; // сокет дл€ обмена данными с клиентом
     SOCKADDR_IN client{}; // параметры сокета
-    int32_t     sizeOfClient{}; // длина prms
+    int32_t     sizeOfClient{}; // –азмер структуры клиента.
     HANDLE      hthread; // handle потока (или процесса)
     HANDLE      htimer; // handle таймера
-    char        msg[50]{}; // сообщение
+    char        msg[256]{}; // сообщение
     char        srvname[15]{}; // наименование обслуживающего сервера
 
     char* ipAddr{};
