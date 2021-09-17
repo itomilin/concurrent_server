@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include <limits> // This is important!
+#include <limits>
 
 #include <WinSock2.h>
 #include <Windows.h>
@@ -9,7 +9,7 @@
 
 int main()
 {
-    HANDLE hPipe; // дескриптор канала
+    HANDLE hPipe{}; // дескриптор канала
 
     if ( ( hPipe = CreateFile(
         L"\\\\.\\pipe\\ConsolePipe",
@@ -36,7 +36,6 @@ int main()
             << "3. STATISTICS" << std::endl
             << "4. WAIT" << std::endl
             << "5. SHUTDOWN" << std::endl
-            //<< "6. GETCOMMAND" << std::endl
             << "Select a command to server: ";
         
         // Проверка на то, что ввели 0-9.
@@ -48,12 +47,12 @@ int main()
             continue;
         }
 
-        char buf[256]{ "\0" };
-        char out_msg[256]{ "\0" };
+        char buf[256]{ };
+        char out_msg[256]{ };
         LPDWORD countReadedBytes{};
         LPDWORD countReadedBytes2{};
 
-        std::sprintf( buf, "%d", input );
+        std::sprintf( buf, "%i", input );
         auto rc = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
 
         auto answer = ReadFile( hPipe, out_msg, sizeof( out_msg ), countReadedBytes2, NULL );

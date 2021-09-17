@@ -8,6 +8,13 @@
 #define PCH_H
 
 // Добавьте сюда заголовочные файлы для предварительной компиляции
+#include <future>
+#include <ctime>
+#include <sstream>
+
 #include "framework.h"
+#include "../defs/defs.h"
+#include "PrototypeService.h" // прототипы обслуживающих потоков
+#include "DefineTableService.h" // макро для TableService
 
 #endif //PCH_H

@@ -2,13 +2,44 @@
 
 #include <string>
 #include <list>
+#include <atomic>
 #include <cstring>
+#include <iostream>
 
 #include <WinSock2.h>
 #include <Windows.h>
 
 #pragma comment( lib, "WS2_32.lib" )
 #pragma warning ( disable: 4996 )
+
+/**
+* Статистика по клиентам.
+* Все переменные делаем атомарными,
+* используем возможности стандартной библиотеки без WINAPI.
+*/
+static struct Statistics final
+{
+    // Общее количество подключений с начала работы сервера.
+    std::atomic<uint16_t> numberOfConnections {0};
+    /**
+    * Общее количество отказов в обслуживании(по всему спектру причин суммарно)
+    * за все время работы сервера
+    */
+    std::atomic<uint16_t> numberOfRefusals    {0};
+    // Количество подсоединений которые завершились успешно.
+    std::atomic<uint16_t> numberOfSuccess     {0};
+    // Количество активных подключений на момент запроса.
+    std::atomic<uint16_t> numberOfActive      {0};
+
+    // Возвращаем строку со счетчиками.
+    std::string getStat()
+    {
+        return "===Stat===\nNumber of active: " + std::to_string( numberOfActive ) +
+            "\nNumber of refusals: " + std::to_string( numberOfRefusals ) +
+            "\nNumber of success: " + std::to_string( numberOfSuccess ) +
+            "\nNumber of connections: " + std::to_string( numberOfConnections );
+    }
+} statistics;
 
 // Команды для сервера.
 enum TalkersCommand
@@ -65,4 +96,5 @@ struct Contact // элемент списка подключений
     }
 };
 
-typedef std::list<Contact> ListContact; // список подключений
+// Список подключений.
+typedef std::list<Contact> ListContact;
