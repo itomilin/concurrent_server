@@ -21,12 +21,19 @@ extern "C" __declspec( dllexport ) HANDLE SSS( const char* id, LPVOID& item )
 
     if ( i < SIZETS )
     {
+        DWORD thread_id{};
+        // Создаем поток обслуживающего сервера.
         rc = CreateThread( NULL, NULL,
             (LPTHREAD_START_ROUTINE)TABLESERVICE_FN( i ),
             (LPVOID)&item,
-            NULL, NULL );
+            NULL, &thread_id );
+        // Записываем id потока, в котором открыт обслуживающий сервер для клиента.
+        ( *(Contact*)&item ).thread_id = thread_id;
+        // Записываем handle потока, обслуживающего сервера.
+        ( *(Contact*)&item ).hthread = rc;
     }
 
+    // Возвращаем HANDLE созданного потока.
     return rc;
 };
 

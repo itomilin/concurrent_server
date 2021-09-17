@@ -106,6 +106,8 @@ bool AcceptCycle( AcceptData& acceptData )
             rc = true; // подключился
             c.type = Contact::ACCEPT;
             contacts.push_back( c );
+            // Переводим событие в сигнальное состояние.
+            SetEvent( my_event );
         }
         LeaveCriticalSection( &scListContact );
         Sleep( 10 );
@@ -164,6 +166,10 @@ bool putAnswerToClient( const char*     name,
 // thread
 DWORD WINAPI acceptServer( LPVOID data )
 {
+    // Создаем событие.
+    my_event = CreateEvent( NULL, FALSE, FALSE, NULL );
+
+
     auto acceptData = *( (AcceptData*)data );
 
     // Параметры сокета сервера.
@@ -194,8 +200,6 @@ DWORD WINAPI acceptServer( LPVOID data )
     acceptData.serverSocket = serverSockTCP;
     commandsCycle( acceptData );
 
-    //Sleep( INFINITE );
-
     // Закрываем сокеты и очищаем ресурсы.
     closesocket( serverSock );
     closesocket( serverSockTCP );
@@ -210,47 +214,52 @@ DWORD WINAPI dispatchServer( LPVOID data )
 {
     while( cmd != TalkersCommand::EXIT )
     {
-        EnterCriticalSection( &scListContact );
-        for ( auto& item : contacts )
+        //std::cout << "**NOTStart scanning list**\n";
+        // Сканируем только когда событие сработало.
+        if ( WaitForSingleObject( my_event, 200 ) != WAIT_OBJECT_0 )
         {
-            /**
-            * Поскольку сокет работает в неблокирующем режиме, то когда клиент
-            * не вызвал send, значение recv возвращает SOCKET_ERROR. Поэтому как только
-            * сообщение было отправлено с клиента, запускаем обслужвающий поток.
-            * Также не обрабатываем клиентов, которые уже в режиме обслуживания.
-            */
-            if ( recv( item.clientSock,
-                item.msg,
-                sizeof( item.msg ), NULL ) != SOCKET_ERROR
-                && item.sthread != Contact::WORK )
+            std::cout << "**Start scanning list**\n";
+            EnterCriticalSection( &scListContact );
+            for ( auto& item : contacts )
             {
                 /**
-                * Если команда от клиента была неправильная, то поток не будет создан.
-                * Допустимые команды echo|time|rand.
+                * Поскольку сокет работает в неблокирующем режиме, то когда клиент
+                * не вызвал send, значение recv возвращает SOCKET_ERROR. Поэтому как только
+                * сообщение было отправлено с клиента, запускаем обслужвающий поток.
+                * Также не обрабатываем клиентов, которые уже в режиме обслуживания.
                 */
-                auto htread = ts( const_cast<char*>( item.msg ), (LPVOID&)( item ) );
+                if ( recv( item.clientSock,
+                    item.msg,
+                    sizeof( item.msg ), NULL ) != SOCKET_ERROR
+                    && item.sthread != Contact::WORK )
+                {
+                    /**
+                    * Если команда от клиента была неправильная, то поток не будет создан.
+                    * Допустимые команды echo|time|rand.
+                    */
+                    char msg[256] = "ErrorInquiry"; // TODO: must be a field
+                    if ( ts( const_cast<char*>( item.msg ), (LPVOID&)( item ) ) != nullptr )
+                    {
+                        std::strcpy( msg, "Connected to service_server." );
+                        send( item.clientSock, msg, sizeof( msg ), NULL );
+                    }
+                    else
+                    {
+                        send( item.clientSock, msg, sizeof( msg ), NULL );
+                        item.SetST( Contact::ABORT, msg );
+                    }
+                    Sleep( 10 );
 
-                // Проверяем если ts возвращает nullptr, значит поток не был создан.
-                char msg[256] = "ErrorInquiry"; // TODO: must be a field
-                if ( htread != nullptr )
-                {
-                    std::strcpy( msg, "Connected to service_server." );
-                    send( item.clientSock, msg, sizeof( msg ), NULL );
-                    item.hthread = hDispatchServer;
+                    //// Сбрасываем событие.
+                    /*ResetEvent( my_event );*/
                 }
-                else
-                {
-                    send( item.clientSock, msg, sizeof( msg ), NULL );
-                    item.SetST( Contact::ABORT, msg );
-                }
-                Sleep( 1000 );
             }
+            LeaveCriticalSection( &scListContact );
         }
-        LeaveCriticalSection( &scListContact );
-        Sleep( 100 );
     }
 
     std::cout << "Close DISPATCH" << std::endl;
+    //return 0u;
     ExitThread( *(DWORD*)data );
 }
 
@@ -264,6 +273,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
             if ( it->sthread == Contact::FINISH )
             {
                 closesocket( it->clientSock );
+                CloseHandle( it->hthread );
                 std::cout << "Disconnected client (Success): " << it->clientSock << std::endl;
                 it = contacts.erase( it );
                 ++statistics.numberOfSuccess;
@@ -272,6 +282,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
                       it->sthread == Contact::ABORT )
             {
                 closesocket( it->clientSock );
+                CloseHandle( it->hthread );
                 std::cout << "Disconnected client (Refuse): " << it->clientSock << std::endl;
                 it = contacts.erase( it );
                 ++statistics.numberOfRefusals;
@@ -383,7 +394,6 @@ DWORD WINAPI responseServer( LPVOID data ) // прототип
 
 int main( int argc, char** argv )
 {
-    std::cout << "thread id main " << GetCurrentThreadId() << std::endl;
     // 1. Инициализация библиотеки WINsock2.
     WSADATA wsaData;
     if ( WSAStartup( MAKEWORD( 2, 0 ), &wsaData ) == EXIT_SUCCESS )
@@ -404,6 +414,7 @@ int main( int argc, char** argv )
         pipeName = argv[3];
         callSign = argv[4];
     }
+
     //--------------------------------------------------------------------------
 
     InitializeCriticalSection( &scListContact );
@@ -432,7 +443,7 @@ int main( int argc, char** argv )
         throw std::runtime_error( "[ ERROR ] Thread AcceptServer was not created!!" );
 
     //--------------------------------------------------------------------------
-
+    Sleep( 100 );
     hDispatchServer = CreateThread( NULL, NULL,
         (LPTHREAD_START_ROUTINE)dispatchServer,
         (LPVOID)&acceptData, NULL, NULL );
@@ -470,10 +481,11 @@ int main( int argc, char** argv )
     //--------------------------------------------------------------------------
 
     WaitForSingleObject( hAcceptServer, INFINITE );
+    //Sleep( 50 );
     WaitForSingleObject( hDispatchServer, INFINITE );
     WaitForSingleObject( hGarbageCleaner, INFINITE );
     WaitForSingleObject( hConsolePipe, INFINITE );
-    Sleep( 100 );
+    //Sleep( 50 );
     WaitForSingleObject( hResponseServer, INFINITE );
 
     CloseHandle( hAcceptServer );

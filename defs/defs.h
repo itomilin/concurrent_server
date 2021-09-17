@@ -72,6 +72,7 @@ struct Contact // элемент списка подключений
     SOCKADDR_IN client{}; // параметры сокета
     int32_t     sizeOfClient{}; // –азмер структуры клиента.
     HANDLE      hthread; // handle потока (или процесса)
+    DWORD       thread_id{}; // id потока в котором исполн€лс€
     HANDLE      htimer; // handle таймера
     char        msg[256]{}; // сообщение
     char        srvname[15]{}; // наименование обслуживающего сервера

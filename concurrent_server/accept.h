@@ -17,6 +17,11 @@ using namespace std::chrono;
 
 #define AS_SQUIRT 10
 
+#include <Windows.h>
+#include <cstdio>
+
+HANDLE my_event;
+
 HANDLE( *ts )( const char*, LPVOID& );
 
 struct AcceptData final
