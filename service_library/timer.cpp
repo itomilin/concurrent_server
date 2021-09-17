@@ -6,16 +6,16 @@ VOID CALLBACK timer_finish_callback( LPVOID lpArgToCompletionRoutine,
                                      DWORD  dwTimerLowValue,
                                      DWORD  dwTimerHighValue )
 {
+    // ”станавливаем статус TIMEOUT дл€ клента, который обслуживалс€ больше 60 сек.
     (*(Contact*)lpArgToCompletionRoutine).SetST( Contact::TIMEOUT, "" );
-    std::cout << "========Timer is signaled======" << std::endl;
     CancelWaitableTimer( ( *(Contact*)lpArgToCompletionRoutine ).htimer );
 
     /*
     * „тобы не использовать опасные TerminateThread или ExitThread,
-    * отправл€ем сообщение, которое разрывает цикл общени€ клиента.
+    * отправл€ем сообщение, которое разрывает цикл общени€ клиента,
+    * предотвараща€ зацикливание.
     */
     PostThreadMessage( ( *(Contact*)lpArgToCompletionRoutine ).thread_id, WM_QUIT, 0, 0 );
-    std::cout << "========EXIT_TIMER======" << std::endl;
 }
 
 // јсинхронный метод дл€ запуска таймера.
@@ -46,5 +46,4 @@ void start_timer_async( LPVOID client )
         printf( "Timer was signaled after 60 sec.\n" );
 
     CloseHandle( h_timer );
-    printf( "...CLOSE_TIMER_HANDLE...\n" );
 }

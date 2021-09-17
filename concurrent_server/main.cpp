@@ -5,6 +5,8 @@
 CRITICAL_SECTION scListContact;
 
 ListContact contacts;
+std::string callSign{};
+std::string pipeName{};
 
 // Команда управления для сервера.
 volatile auto cmd = TalkersCommand::START;
@@ -106,7 +108,7 @@ bool AcceptCycle( AcceptData& acceptData )
             rc = true; // подключился
             c.type = Contact::ACCEPT;
             contacts.push_back( c );
-            // Переводим событие в сигнальное состояние.
+            // Переводим событие в сигнальное состояние.SetEvent
             SetEvent( my_event );
         }
         LeaveCriticalSection( &scListContact );
@@ -123,13 +125,13 @@ bool getRequestFromClient( char*          name,
 {
     bool rc = false;
     // Позывной сервера. TODO: Вынести в поле класса.
-    constexpr char callSign[] = "helloserver";
+    //constexpr char callSign[] = "helloserver";
     
     // Структура сокета клиента, заполняется при вызове recvfrom.
     while ( recvfrom( serverSock, name, 256, NULL, from, fLen ) != SOCKET_ERROR )
     {
         // Если сообщение является позывным, выходим из цикла и возвращаем true.
-        if ( std::strcmp( name, callSign ) == NULL )
+        if ( std::strcmp( name, callSign.c_str() ) == NULL )
         {
             rc = true;
             break;
@@ -163,13 +165,8 @@ bool putAnswerToClient( const char*     name,
          == SOCKET_ERROR ? false : true;
 }
 
-// thread
 DWORD WINAPI acceptServer( LPVOID data )
 {
-    // Создаем событие.
-    my_event = CreateEvent( NULL, FALSE, FALSE, NULL );
-
-
     auto acceptData = *( (AcceptData*)data );
 
     // Параметры сокета сервера.
@@ -197,6 +194,9 @@ DWORD WINAPI acceptServer( LPVOID data )
     if ( ioctlsocket( serverSockTCP, FIONBIO, &nonblk ) == SOCKET_ERROR )
         throw errorHandler( "ioctlsocket: ", WSAGetLastError() );
 
+    // Создаем событие.
+    my_event = CreateEvent( NULL, FALSE, FALSE, NULL );
+
     acceptData.serverSocket = serverSockTCP;
     commandsCycle( acceptData );
 
@@ -209,16 +209,16 @@ DWORD WINAPI acceptServer( LPVOID data )
     ExitThread( *(DWORD*)data ); // завершение работы потока
 }
 
-//thread
 DWORD WINAPI dispatchServer( LPVOID data )
 {
     while( cmd != TalkersCommand::EXIT )
     {
-        //std::cout << "**NOTStart scanning list**\n";
-        // Сканируем только когда событие сработало.
-        if ( WaitForSingleObject( my_event, 200 ) != WAIT_OBJECT_0 )
+        Sleep( 50 );
+        // Сканируем список только когда сработало событие из accept_cycle.
+        if ( WaitForSingleObject( my_event, 100 ) == WAIT_OBJECT_0 )
         {
-            std::cout << "**Start scanning list**\n";
+            // Возобновляем событие, пока не будут обслужены клиенты.
+            SetEvent( my_event );
             EnterCriticalSection( &scListContact );
             for ( auto& item : contacts )
             {
@@ -249,9 +249,16 @@ DWORD WINAPI dispatchServer( LPVOID data )
                         item.SetST( Contact::ABORT, msg );
                     }
                     Sleep( 10 );
-
-                    //// Сбрасываем событие.
-                    /*ResetEvent( my_event );*/
+                }
+                // Проверяем есть ли не обслуженные клиенты.
+                if ( std::find_if( contacts.begin(), contacts.end(),
+                    []( const Contact& item )
+                    {
+                        return item.sthread != Contact::WORK;
+                    } ) == contacts.end() )
+                {
+                    // Сбрасываем событие, когда все обслужены.
+                    ResetEvent( my_event );
                 }
             }
             LeaveCriticalSection( &scListContact );
@@ -259,7 +266,6 @@ DWORD WINAPI dispatchServer( LPVOID data )
     }
 
     std::cout << "Close DISPATCH" << std::endl;
-    //return 0u;
     ExitThread( *(DWORD*)data );
 }
 
@@ -306,10 +312,16 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
     
     HANDLE hPipe{}; // дескриптор канала
 
+    std::wstring wide = L"\\\\.\\pipe\\";
+
+    std::wstringstream cls;
+    cls << wide.c_str() << pipeName.c_str();
+    std::wstring total = cls.str();
+
     try
     {
         // Создаем канал.
-        if ( ( hPipe = CreateNamedPipe(L"\\\\.\\pipe\\ConsolePipe",
+        if ( ( hPipe = CreateNamedPipe(total.c_str(),
             PIPE_ACCESS_DUPLEX, //дуплексный канал
             PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный // NOWAIT
             1, NULL, NULL, // максимум 1 экземпляр
@@ -400,13 +412,16 @@ int main( int argc, char** argv )
         std::cout << "[ OK ] Init WSAStartup!" << std::endl;
     else
         throw errorHandler( "WSAStartup: ", WSAGetLastError() );
+
     // Если в параметрах командной строки не установлен порт, по умолчанию 2000;
     int16_t UDPPort { 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
-    std::string pipeName = "\\\\.\\pipe\\ConsolePipe";
-    std::string callSign = "helloserver";
 
-    if ( argc > 1 )
+    std::string name = "ConsolePipe";
+
+    callSign = "helloserver";
+
+    if ( argc > 4 )
     {
         UDPPort = std::stoi( argv[1] );
         std::string name = argv[2];
@@ -414,13 +429,25 @@ int main( int argc, char** argv )
         pipeName = argv[3];
         callSign = argv[4];
     }
+    else
+    {
+        std::cout << "[ ERROR] Check args." << std::endl;
+        std::exit( EXIT_FAILURE );
+    }
+
+    std::cout << "Params for connect r_console and clients:" << std::endl
+        << "UDP_port: " << std::to_string( UDPPort ) << std::endl
+        << "DLL_name: " << dllName.c_str() << std::endl
+        << "Pipe_name: " << pipeName << std::endl
+        << "Call_sign: " << callSign << std::endl;
 
     //--------------------------------------------------------------------------
 
     InitializeCriticalSection( &scListContact );
 
     //--------------------------------------------------------------------------
-
+    
+    // Загрузка DLL.
     HMODULE st = LoadLibrary( dllName.c_str() );
     if ( st == nullptr )
         throw std::runtime_error( "[ ERROR] DLL not loaded!!" );
@@ -431,6 +458,7 @@ int main( int argc, char** argv )
 
     //--------------------------------------------------------------------------
 
+    // Создание потоков и установка приоритетов.
     AcceptData acceptData {};
     acceptData.cmd = cmd;
     acceptData.port = UDPPort;
@@ -441,15 +469,19 @@ int main( int argc, char** argv )
 
     if ( hAcceptServer == nullptr )
         throw std::runtime_error( "[ ERROR ] Thread AcceptServer was not created!!" );
+    if ( SetThreadPriority( hAcceptServer, THREAD_PRIORITY_ABOVE_NORMAL ) == FALSE )
+        throw std::runtime_error( "[ ERROR ] Can`t set priority!!" );
 
     //--------------------------------------------------------------------------
-    Sleep( 100 );
+
     hDispatchServer = CreateThread( NULL, NULL,
         (LPTHREAD_START_ROUTINE)dispatchServer,
         (LPVOID)&acceptData, NULL, NULL );
 
     if ( hDispatchServer == nullptr )
         throw std::runtime_error( "[ ERROR ] Thread DispatchServer was not created!!" );
+    if ( SetThreadPriority( hDispatchServer, THREAD_PRIORITY_NORMAL ) == FALSE )
+        throw std::runtime_error( "[ ERROR ] Can`t set priority!!" );
 
     //--------------------------------------------------------------------------
 
@@ -459,6 +491,8 @@ int main( int argc, char** argv )
 
     if ( hGarbageCleaner == nullptr )
         throw std::runtime_error( "[ ERROR ] Thread GarbageCleaner was not created!!" );
+    if ( SetThreadPriority( hGarbageCleaner, THREAD_PRIORITY_IDLE ) == FALSE )
+        throw std::runtime_error( "[ ERROR ] Can`t set priority!!" );
 
     //--------------------------------------------------------------------------
 
@@ -468,30 +502,34 @@ int main( int argc, char** argv )
 
     if ( hConsolePipe == nullptr )
         throw std::runtime_error( "[ ERROR ] Thread ConsolePipe was not created!!" );
+    if ( SetThreadPriority( hConsolePipe, THREAD_PRIORITY_NORMAL ) == FALSE )
+        throw std::runtime_error( "[ ERROR ] Can`t set priority!!" );
 
     //--------------------------------------------------------------------------
+
     Sleep( 100 );
+
     hResponseServer = CreateThread( NULL, NULL,
         (LPTHREAD_START_ROUTINE)responseServer,
         (LPVOID)&acceptData, NULL, NULL );
 
     if ( hResponseServer == nullptr )
         throw std::runtime_error( "[ ERROR ] Thread ResponseServer was not created!!" );
+    if ( SetThreadPriority( hResponseServer, THREAD_PRIORITY_NORMAL ) == FALSE )
+        throw std::runtime_error( "[ ERROR ] Can`t set priority!!" );
 
     //--------------------------------------------------------------------------
 
-    WaitForSingleObject( hAcceptServer, INFINITE );
-    //Sleep( 50 );
+    WaitForSingleObject( hAcceptServer,   INFINITE );    
     WaitForSingleObject( hDispatchServer, INFINITE );
     WaitForSingleObject( hGarbageCleaner, INFINITE );
-    WaitForSingleObject( hConsolePipe, INFINITE );
-    //Sleep( 50 );
+    WaitForSingleObject( hConsolePipe,    INFINITE );
     WaitForSingleObject( hResponseServer, INFINITE );
 
-    CloseHandle( hAcceptServer );
+    CloseHandle( hAcceptServer   );
     CloseHandle( hDispatchServer );
     CloseHandle( hGarbageCleaner );
-    CloseHandle( hConsolePipe );
+    CloseHandle( hConsolePipe    );
     CloseHandle( hResponseServer );
 
     //--------------------------------------------------------------------------

@@ -1,18 +1,37 @@
 #include <iostream>
 #include <string>
 #include <limits>
+#include <cstring>
 
 #include <WinSock2.h>
 #include <Windows.h>
 
 #include "../defs/defs.h"
 
-int main()
+#include <sstream>
+
+
+//#pragma warning (disable : 4996)
+
+int main( int argc, char** argv )
 {
+    if ( argc < 2 )
+    {
+        std::wcout << "[ ERROR ] Check args." << std::endl;
+    }
+
     HANDLE hPipe{}; // дескриптор канала
 
+    // Перевод параметра в LPCWSTR.
+    std::string name = argv[1];
+    std::wstring wide = L"\\\\.\\pipe\\";
+
+    std::wstringstream cls;
+    cls << wide.c_str() << name.c_str();
+    std::wstring total = cls.str();
+
     if ( ( hPipe = CreateFile(
-        L"\\\\.\\pipe\\ConsolePipe",
+        total.c_str(),
         GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         NULL, OPEN_EXISTING, NULL,

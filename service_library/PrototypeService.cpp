@@ -14,15 +14,9 @@ DWORD WINAPI EchoServer( LPVOID& item )
 
     // Ставим метку, что клиент перешел в состояние обслуживания.
     client->SetST( Contact::WORK, "" );
-    //client->srvname = "EchoServer";
 
     char msg[256] {};
     memset( msg, 0x00, sizeof( msg ) );
-
-    // TODO. Выяснить почему первый recv возвращает не socket_error < 0
-    // По какой=то причине буфер msg очищается только в функции recv
-    // memset такого эффекта не дает
-    recv( client->clientSock, msg, sizeof( msg ), NULL );
 
     MSG    msg_peek{};
     // Ждем сообщения от клиента, которое затем отправим ему обратно.
@@ -32,8 +26,7 @@ DWORD WINAPI EchoServer( LPVOID& item )
         if ( PeekMessage( &msg_peek, NULL, WM_QUIT, WM_QUIT, PM_REMOVE ) == TRUE )
             break;
 
-        auto out = recv( client->clientSock, msg, sizeof( msg ), NULL );
-        if ( out != SOCKET_ERROR )
+        if ( recv( client->clientSock, msg, sizeof( msg ), NULL ) != SOCKET_ERROR )
         {
             if ( std::strlen( msg ) == 0 )
             {
@@ -69,11 +62,6 @@ DWORD WINAPI TimeServer( LPVOID& item )
     char msg[256]{};
     memset( msg, 0x00, sizeof( msg ) );
 
-    // TODO. Выяснить почему первый recv возвращает не socket_error < 0
-    // По какой=то причине буфер msg очищается только в функции recv
-    // memset такого эффекта не дает
-    recv( client->clientSock, msg, sizeof( msg ), NULL );
-
     time_t rawtime;
     struct tm* timeinfo;
     char buffer[80];
@@ -86,8 +74,7 @@ DWORD WINAPI TimeServer( LPVOID& item )
         if ( PeekMessage( &msg_peek, NULL, WM_QUIT, WM_QUIT, PM_REMOVE ) == TRUE )
             break;
 
-        auto out = recv( client->clientSock, msg, sizeof( msg ), NULL );
-        if ( out != SOCKET_ERROR )
+        if ( recv( client->clientSock, msg, sizeof( msg ), NULL ) != SOCKET_ERROR )
         {
             if ( std::strcmp( "time", msg ) != 0 )
             {
@@ -122,15 +109,9 @@ DWORD WINAPI RandServer( LPVOID& item )
     auto client = (Contact*)&item;
     // Ставим метку, что клиент перешел в состояние обслуживания.
     client->SetST( Contact::WORK, "" );
-    //client->srvname = "EchoServer";
 
     char msg[256] {};
     memset( msg, 0x00, sizeof( msg ) );
-
-    // TODO. Выяснить почему первый recv возвращает не socket_error < 0
-    // По какой=то причине буфер msg очищается только в функции recv
-    // memset такого эффекта не дает
-    recv( client->clientSock, msg, sizeof( msg ), NULL );
 
     MSG    msg_peek{};
     // Ждем сообщения от клиента, которое затем отправим ему обратно.
@@ -140,8 +121,7 @@ DWORD WINAPI RandServer( LPVOID& item )
         if ( PeekMessage( &msg_peek, NULL, WM_QUIT, WM_QUIT, PM_REMOVE ) == TRUE )
             break;
 
-        auto out = recv( client->clientSock, msg, sizeof( msg ), NULL );
-        if ( out != SOCKET_ERROR )
+        if ( recv( client->clientSock, msg, sizeof( msg ), NULL ) != SOCKET_ERROR )
         {
             if ( std::strcmp( "rand", msg ) != 0 )
             {

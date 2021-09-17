@@ -6,6 +6,7 @@
 #include <cstring>
 #include <future>
 #include <chrono>
+#include <sstream>
 
 #include <WinSock2.h>
 #include <Windows.h>
@@ -16,9 +17,6 @@
 using namespace std::chrono;
 
 #define AS_SQUIRT 10
-
-#include <Windows.h>
-#include <cstdio>
 
 HANDLE my_event;
 
@@ -55,4 +53,3 @@ bool putAnswerToClient( const char* name,
     const sockaddr* to,
     const int32_t* lTo,
     const SOCKET& serverSock );
-
