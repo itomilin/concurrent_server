@@ -15,29 +15,26 @@
 
 int main( int argc, char** argv )
 {
-    if ( argc < 2 )
-    {
-        std::wcout << "[ ERROR ] Check args." << std::endl;
-    }
+    if ( argc < 3 )
+        std::cout << "[ ERROR ] Check args." << std::endl;
 
     HANDLE hPipe{}; // дескриптор канала
 
     // Перевод параметра в LPCWSTR.
-    std::string name = argv[1];
-    std::wstring wide = L"\\\\.\\pipe\\";
+    char* host_name = argv[1];
+    char* pipe_name = argv[2];
 
     std::wstringstream cls;
-    cls << wide.c_str() << name.c_str();
-    std::wstring total = cls.str();
+    cls << L"\\\\" << host_name << "\\pipe\\" << pipe_name;
+    std::wstring full_name = cls.str();
 
     if ( ( hPipe = CreateFile(
-        total.c_str(),
+        full_name.c_str(),
         GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        NULL, OPEN_EXISTING, NULL,
+        NULL, NULL, OPEN_EXISTING, NULL,
         NULL ) ) == INVALID_HANDLE_VALUE )
     {
-        std::cout << "[ ERROR ] Pipe. Create file: "
+        std::cout << "[ ERROR ] Pipe: CreateFile ERROR_CODE: "
             << GetLastError() << std::endl;
 
         std::cout << "Press any key to exit..." << std::endl;

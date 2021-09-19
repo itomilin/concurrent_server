@@ -197,6 +197,11 @@ DWORD WINAPI acceptServer( LPVOID data )
     // Создаем событие.
     my_event = CreateEvent( NULL, FALSE, FALSE, NULL );
 
+    // Получаем сетевое имя компьютера для подключения именнованного канала.
+    auto hent = gethostbyaddr( (char*)&server.sin_addr,
+        sizeof( server.sin_addr ), server.sin_family );
+    std::cout << "Hostname:  " << hent->h_name << std::endl;
+
     acceptData.serverSocket = serverSockTCP;
     commandsCycle( acceptData );
 
@@ -326,9 +331,9 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
             PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный // NOWAIT
             1, NULL, NULL, // максимум 1 экземпляр
             INFINITE, NULL ) ) == INVALID_HANDLE_VALUE )
-            throw errorHandler( "create:", GetLastError() );
+            throw errorHandler( "Create pipe: ", GetLastError() );
         if ( !ConnectNamedPipe( hPipe, NULL ) ) // ожидать клиента
-            throw errorHandler( "connect:", GetLastError() );
+            throw errorHandler( "Connect pipe: ", GetLastError() );
     }
     catch ( std::string ErrorPipeText )
     {
@@ -436,8 +441,8 @@ int main( int argc, char** argv )
     }
 
     std::cout << "Params for connect r_console and clients:" << std::endl
-        << "UDP_port: " << std::to_string( UDPPort ) << std::endl
-        << "DLL_name: " << dllName.c_str() << std::endl
+        << "UDP_port:  " << std::to_string( UDPPort ) << std::endl
+        << "DLL_name:  " << dllName.c_str() << std::endl
         << "Pipe_name: " << pipeName << std::endl
         << "Call_sign: " << callSign << std::endl;
 
