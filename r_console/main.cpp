@@ -20,19 +20,23 @@ int main( int argc, char** argv )
 
     HANDLE hPipe{}; // дескриптор канала
 
-    // Перевод параметра в LPCWSTR.
+    // Записываем полученные параметры.
     char* host_name = argv[1];
     char* pipe_name = argv[2];
 
+    // Перевод имени канала в wstring.
     std::wstringstream cls;
     cls << L"\\\\" << host_name << "\\pipe\\" << pipe_name;
     std::wstring full_name = cls.str();
 
     if ( ( hPipe = CreateFile(
-        full_name.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        NULL, NULL, OPEN_EXISTING, NULL,
-        NULL ) ) == INVALID_HANDLE_VALUE )
+        full_name.c_str(),            // Имя канала.
+        GENERIC_READ | GENERIC_WRITE, // Атрибуты (чтение и запись).
+        NULL,                         // Нет разделяемых операций.
+        NULL,                         // Защита по умолчанию.
+        OPEN_EXISTING,                // Открытие существуюего канала.
+        NULL,                         // Атрибуты по умолчанию.
+        NULL /*Дополнительные атрибуты.*/ ) ) == INVALID_HANDLE_VALUE )
     {
         std::cout << "[ ERROR ] Pipe: CreateFile ERROR_CODE: "
             << GetLastError() << std::endl;
@@ -63,8 +67,8 @@ int main( int argc, char** argv )
             continue;
         }
 
-        char buf[256]{ };
-        char out_msg[256]{ };
+        char buf[256]{};
+        char out_msg[256]{};
         LPDWORD countReadedBytes{};
         LPDWORD countReadedBytes2{};
 
@@ -74,7 +78,7 @@ int main( int argc, char** argv )
         auto answer = ReadFile( hPipe, out_msg, sizeof( out_msg ), countReadedBytes2, NULL );
         std::cout << "Answer is: " << out_msg << std::endl << std::endl;
 
-        if ( input == 2 || input == 5 )
+        if ( input == 2 || std::strcmp( out_msg, "" ) == NULL )
             break;
     }
 

@@ -30,14 +30,18 @@ static struct Statistics final
     std::atomic<uint16_t> numberOfSuccess     {0};
     // Количество активных подключений на момент запроса.
     std::atomic<uint16_t> numberOfActive      {0};
+    // Количество подключений, которые обслуживаются в серверах (echo|time|rand).
+    std::atomic<uint16_t> numberInServiceProcess{ 0 };
 
     // Возвращаем строку со счетчиками.
     std::string getStat()
     {
-        return "===Stat===\nNumber of active: " + std::to_string( numberOfActive ) +
-            "\nNumber of refusals: " + std::to_string( numberOfRefusals ) +
-            "\nNumber of success: " + std::to_string( numberOfSuccess ) +
-            "\nNumber of connections: " + std::to_string( numberOfConnections );
+        return "===Stat===" 
+            "\nNumber of active :     " + std::to_string( numberOfActive ) +
+            "\nNumber of refusals:    " + std::to_string( numberOfRefusals ) +
+            "\nNumber of success:     " + std::to_string( numberOfSuccess ) +
+            "\nNumber of connections: " + std::to_string( numberOfConnections ) +
+            "\nNumber in process:     " + std::to_string( numberInServiceProcess );
     }
 } statistics;
 

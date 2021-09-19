@@ -39,39 +39,24 @@ void commandsCycle( AcceptData& acceptData )
             cmd = TalkersCommand::GETCOMMAND;
             break;
         case TalkersCommand::STOP:
-            //std::cout << "Forbidden new connections." << std::endl;
             continue;
-        case TalkersCommand::STATISTICS:
-            cmd = TalkersCommand::GETCOMMAND;
-            break;
+        //case TalkersCommand::STATISTICS:
+        //    break;
         case TalkersCommand::WAIT:
         {
-            auto it = std::find_if( contacts.begin(), contacts.end(),
-                []( const Contact& item )
-                {
-                    return item.sthread == Contact::WORK;
-                } );
-            if ( it == contacts.end() )
-            {
-                squirt = AS_SQUIRT;
-                acceptData.squirt = squirt;
-                AcceptCycle( acceptData );
-            }
-
+            // Если обслуживающихся на данный момент нет, то подключаем новых.
+            if ( statistics.numberInServiceProcess == NULL )
+                cmd = TalkersCommand::GETCOMMAND;
             break;
         }
         case TalkersCommand::SHUTDOWN:
         {
-            auto it = std::find_if( contacts.begin(), contacts.end(),
-                []( const Contact& item )
-                {
-                    return item.sthread == Contact::WORK;
-                } );
-            if ( it == contacts.end() )
+            // Если обслуживающихся нет, то завершаем работу сервера.
+            if ( statistics.numberInServiceProcess == NULL )
                 cmd = TalkersCommand::EXIT;
-
             break;
         }
+        // Даем разрешение на подключение новых клиентов.
         case TalkersCommand::GETCOMMAND:
         {
             squirt = AS_SQUIRT;
@@ -80,7 +65,6 @@ void commandsCycle( AcceptData& acceptData )
             break;
         }
         }
-
         Sleep( 10 );
     }
 }
@@ -238,6 +222,7 @@ DWORD WINAPI dispatchServer( LPVOID data )
                     sizeof( item.msg ), NULL ) != SOCKET_ERROR
                     && item.sthread != Contact::WORK )
                 {
+                    ++statistics.numberInServiceProcess;
                     /**
                     * Если команда от клиента была неправильная, то поток не будет создан.
                     * Допустимые команды echo|time|rand.
@@ -288,6 +273,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
                 std::cout << "Disconnected client (Success): " << it->clientSock << std::endl;
                 it = contacts.erase( it );
                 ++statistics.numberOfSuccess;
+                --statistics.numberInServiceProcess;
             }
             else if ( it->sthread == Contact::TIMEOUT ||
                       it->sthread == Contact::ABORT )
@@ -297,6 +283,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
                 std::cout << "Disconnected client (Refuse): " << it->clientSock << std::endl;
                 it = contacts.erase( it );
                 ++statistics.numberOfRefusals;
+                --statistics.numberInServiceProcess;
             }
             else
             {
@@ -304,7 +291,7 @@ DWORD WINAPI garbageCleaner( LPVOID data ) // прототип
             }
         }
         LeaveCriticalSection( &scListContact );
-        Sleep( 100 );
+        Sleep( 10 );
     }
 
     std::cout << "Close GB cleaner" << std::endl;
@@ -317,28 +304,19 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
     
     HANDLE hPipe{}; // дескриптор канала
 
-    std::wstring wide = L"\\\\.\\pipe\\";
-
     std::wstringstream cls;
-    cls << wide.c_str() << pipeName.c_str();
+    cls << L"\\\\.\\pipe\\" << pipeName.c_str();
     std::wstring total = cls.str();
 
-    try
-    {
-        // Создаем канал.
-        if ( ( hPipe = CreateNamedPipe(total.c_str(),
-            PIPE_ACCESS_DUPLEX, //дуплексный канал
-            PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный // NOWAIT
-            1, NULL, NULL, // максимум 1 экземпляр
-            INFINITE, NULL ) ) == INVALID_HANDLE_VALUE )
-            throw errorHandler( "Create pipe: ", GetLastError() );
-        if ( !ConnectNamedPipe( hPipe, NULL ) ) // ожидать клиента
-            throw errorHandler( "Connect pipe: ", GetLastError() );
-    }
-    catch ( std::string ErrorPipeText )
-    {
-        std::cout << std::endl << ErrorPipeText;
-    }
+    // Создаем канал.
+    if ( ( hPipe = CreateNamedPipe( total.c_str(),
+        PIPE_ACCESS_DUPLEX, //дуплексный канал
+        PIPE_TYPE_MESSAGE | PIPE_WAIT, // сообщения|синхронный
+        1, NULL, NULL, // максимум 1 экземпляр
+        INFINITE, NULL ) ) == INVALID_HANDLE_VALUE )
+        throw errorHandler( "Create pipe: ", GetLastError() );
+    if ( !ConnectNamedPipe( hPipe, NULL ) ) // ожидать клиента
+        throw errorHandler( "Connect pipe: ", GetLastError() );
 
     while ( cmd != TalkersCommand::EXIT )
     {
@@ -356,24 +334,32 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
             {
                 if ( i == (TalkersCommand)std::stoi( buf ) )
                 {
+                    auto current_command = cmd;
                     // Меняем текущую команду.
                     cmd = (TalkersCommand)std::stoi( buf );
-                    // Отправляем удаленной консоли эту же команду.
+
+                    // Если вызывается статистика, то алгоритм следующий.
                     if ( cmd == TalkersCommand::STATISTICS )
                     {
+                        // Получаем статистику по активным наданный момент.
                         statistics.numberOfActive = static_cast<int16_t>( contacts.size() );
+                        // Копируем в буфер информацию структуры.
                         std::strcpy( buf, statistics.getStat().c_str() );
-                        auto answer = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+                        // Отправляем сообщение по каналу.
+                        WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+                        // Изменяем команду на ту, которая была до этого, т.к статистика одноразовый вызов.
+                        cmd = current_command;
                     }
-                    else
-                        auto answer = WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
+                    else // Во вех других случаях отправляем удаленной консоли эту же команду.
+                        WriteFile( hPipe, buf, sizeof( buf ), countReadedBytes, NULL );
                     is_correct = true;
                     break;
                 }
             }
 
+            // Если была отправлена команда с неизвестным номером, отправляем nocmd.
             if ( !is_correct )
-                auto answer = WriteFile( hPipe, err_cmd, sizeof( err_cmd ), countReadedBytes, NULL );
+                WriteFile( hPipe, err_cmd, sizeof( err_cmd ), countReadedBytes, NULL );
         }
     }
 
@@ -384,25 +370,32 @@ DWORD WINAPI consolePipe( LPVOID data ) // прототип
     ExitThread( *(DWORD*)data );
 }
 
-DWORD WINAPI responseServer( LPVOID data ) // прототип
+DWORD WINAPI responseServer( LPVOID data )
 {
     while ( cmd != TalkersCommand::EXIT )
     {
-        // Параметры сокета клиента.
-        SOCKADDR_IN client{};
-        char buf[256]{};
-        int32_t sizeOfClient = sizeof( client );
-        int32_t acceptedBytes{};
-
-        if ( getRequestFromClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
+        Sleep( 10 );
+        // Если команда STOP, запрещаем принимать широковещательные запросы.
+        if ( cmd != TalkersCommand::STOP )
         {
-            std::cout << "Request was recieved..." << std::endl;
-            if ( putAnswerToClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
+            // Если на данный момент есть обслуживающиеся клиенты и WAIT, также не принимаем запросы.
+            if ( statistics.numberInServiceProcess != NULL && cmd == TalkersCommand::WAIT )
+                continue;
+            // Параметры сокета клиента.
+            SOCKADDR_IN client{};
+            char buf[256]{};
+            int32_t sizeOfClient = sizeof( client );
+            int32_t acceptedBytes{};
+
+            if ( getRequestFromClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
             {
-                std::cout << "Answer was sent..." << std::endl;
+                std::cout << "Request was recieved..." << std::endl;
+                if ( putAnswerToClient( buf, (sockaddr*)&client, &sizeOfClient, SERVER_SOCK ) )
+                {
+                    std::cout << "Answer was sent..." << std::endl;
+                }
             }
         }
-        Sleep( 10 );
     }
 
     std::cout << "Close responseServer." << std::endl;
@@ -421,9 +414,7 @@ int main( int argc, char** argv )
     // Если в параметрах командной строки не установлен порт, по умолчанию 2000;
     int16_t UDPPort { 2000 };
     std::wstring dllName = std::wstring( L"service_library" );
-
     std::string name = "ConsolePipe";
-
     callSign = "helloserver";
 
     if ( argc > 4 )
@@ -442,7 +433,6 @@ int main( int argc, char** argv )
 
     std::cout << "Params for connect r_console and clients:" << std::endl
         << "UDP_port:  " << std::to_string( UDPPort ) << std::endl
-        << "DLL_name:  " << dllName.c_str() << std::endl
         << "Pipe_name: " << pipeName << std::endl
         << "Call_sign: " << callSign << std::endl;
 

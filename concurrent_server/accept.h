@@ -4,8 +4,8 @@
 #include <iostream>
 #include <list>
 #include <cstring>
-#include <future>
-#include <chrono>
+//#include <future>
+//#include <chrono>
 #include <sstream>
 
 #include <WinSock2.h>
@@ -14,7 +14,7 @@
 
 #include "../defs/defs.h"
 
-using namespace std::chrono;
+//using namespace std::chrono;
 
 #define AS_SQUIRT 10
 
@@ -22,6 +22,7 @@ HANDLE my_event;
 
 HANDLE( *ts )( const char*, LPVOID& );
 
+// Структура для передачи информации между потоками.
 struct AcceptData final
 {
     SOCKET serverSocket;
@@ -30,6 +31,7 @@ struct AcceptData final
     int32_t squirt;
 };
 
+// Дескрипторы потоков.
 HANDLE hAcceptServer;
 HANDLE hDispatchServer;
 HANDLE hGarbageCleaner;
